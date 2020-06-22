@@ -1,0 +1,84 @@
+library(ggplot2)
+library(corrplot)
+library(moments)
+library(caret)
+library(caTools)
+library(DAAG)
+library(fmsb)
+library(MASS)
+winequality_red <- read_csv("winequality-red.csv")
+df<-winequality_red
+mode(df)
+str(df)
+names(df)[names(df)=="fixed acidity"]<-"fa"
+names(df)[names(df)=="volatile acidity"]<-"va"
+names(df)[names(df)=="citric acid"]<-"ca"
+names(df)[names(df)=="residual sugar"]<-"rs"
+names(df)[names(df)=="chlorides"]<-"chl"
+names(df)[names(df)=="free sulfur dioxide"]<-"fsd"
+names(df)[names(df)=="total sulfur dioxide"]<-"tsd"
+
+corrplot(cor(df),round(2))
+df<-unique(df)
+dim(df)
+z<-round(cor(df),2)
+z
+corrplot(z)
+
+skewness(df)
+data1<-sapply(df,as.numeric)
+dim(data1)
+mode(data1)
+sum(is.na(data1))
+data2<-unique(data1)
+dim(data2)
+
+datap<- preProcess(data2[,1:11],method = "BoxCox")
+newd<-data.frame(trans=predict(datap,data2))
+skewness(newd$trans.fa)
+skewness(newd$trans.va)
+skewness(newd$trans.quality)
+corrplot(cor(newd),type = "lower")
+set.seed(101)
+
+training<-sample.split(newd,SplitRatio = 0.8)
+train<-subset(newd,training==T)
+test<-subset(newd,training==F)
+
+linear<-lm(trans.quality~.,train)
+summary(linear)
+
+vif(linear)
+
+stepAIC(linear)
+
+df$category[df$quality<=5]<-0
+df$category[df$quality>5]<-1
+
+logit<-glm(category~.-quality,df,family='binomial')
+summary(logit)
+set.seed(101)
+
+splitting<-sample.split(df$category,SplitRatio = 0.8)
+train_new<-subset(df,splitting==T)
+test_new<-subset(df,splitting==F)
+
+logik<-glm(category~.,data=train_new[,-c(1,3,4,8,9,12)],family='binomial')
+summary(logik)
+
+prob<-predict(logik,type = 'response')
+trend<-ifelse(prob>0.5,"Good wine","Bad wine")
+confusion<-table(Predicted=trend,Actual=train_new$category)
+confusion
+confusion1<-data.frame(confusion)
+
+tile<-ggplot(confusion1,aes(x=confusion1$Predicted,y=confusion1$Actual,fill=confusion1$Freq))+geom_tile()
+tile<-tile+geom_text(aes(label=confusion1$Freq),size=5)
+tile
+accuracy_train<-sum(diag(confusion))/sum(confusion)
+accuracy_train
+prob_test<-ifelse(predict(logik,newdata = test_new,type = 'response')>0.5,"Good wine","Bad wine")
+test_table<-table(predicted=prob_test,actual=test_new$category)
+test_table
+accuracy_test<-sum(diag(test_table))/length(test_new$category)
+accuracy_test
